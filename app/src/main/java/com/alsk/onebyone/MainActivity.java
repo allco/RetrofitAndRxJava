@@ -1,13 +1,16 @@
 package com.alsk.onebyone;
 
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.support.annotation.NonNull;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 
-import com.alsk.onebyone.models.GithubProject;
-import com.alsk.onebyone.rest.GithubApi;
-import com.alsk.onebyone.rest.GithubService;
+import com.alsk.onebyone.hugejsonservice.models.Feature;
+import com.alsk.onebyone.hugejsonservice.rest.HugeJsonApi;
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import com.google.gson.stream.JsonReader;
 
@@ -15,8 +18,6 @@ import java.lang.reflect.Type;
 
 import okhttp3.ResponseBody;
 import rx.Observable;
-import rx.Subscriber;
-import rx.android.schedulers.AndroidSchedulers;
 import rx.schedulers.Schedulers;
 
 import static okhttp3.internal.Util.closeQuietly;
@@ -29,61 +30,58 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
-        playSample();
+        playHugeJsonSample();
     }
 
-    public static void playSample() {
+    public void playHugeJsonSample() {
 
-        GithubApi githubApi = GithubService.createRetrofitService(GithubApi.class, GithubApi.SERVICE_ENDPOINT);
+        HugeJsonApi hugeJsonApi = RestUtils.createService(HugeJsonApi.class, HugeJsonApi.SERVICE_ENDPOINT);
 
-        convert(githubApi.getProjects("linkedin"), new Gson(), GithubProject.class)
+        Gson gson = new GsonBuilder().create();
+
+        Handler handler = new Handler(Looper.getMainLooper());
+
+        hugeJsonApi.get()
+                .flatMap(responseBody -> convertObjectsStream(responseBody, gson, Feature.class))
                 .subscribeOn(Schedulers.io())
-                .observeOn(AndroidSchedulers.mainThread())
-                .subscribe(new Subscriber<GithubProject>() {
-                    @Override
-                    public void onCompleted() {
-                        Log.e(TAG, "onCompleted() called with: " + "");
-                    }
-
-                    @Override
-                    public void onError(Throwable e) {
-                        e.printStackTrace();
-                    }
-
-                    @Override
-                    public void onNext(GithubProject githubProject) {
-                        Log.e(TAG, githubProject.name);
-                        request(1);
-                    }
-                });
+                //.observeOn(AndroidSchedulers.mainThread())
+                .subscribe(feature -> handler.post(()->Log.i(TAG, gson.toJson(feature))), e -> Log.e(TAG, "something went wrong", e), () -> Log.i(TAG, "onCompleted() called"));
     }
 
-    static public <TYPE> Observable<TYPE> convert(Observable<ResponseBody> sourceObservable, Gson gson, Class<TYPE> clazz) {
-        return sourceObservable
-                .flatMap(responseBody -> Observable.create((Observable.OnSubscribe<TYPE>) subscriber -> {
-                    JsonReader reader = null;
-                    try {
-                        Type type = TypeToken.get(clazz).getType();
-                        reader = gson.newJsonReader(responseBody.charStream());
-                        reader.beginArray();
-                        while (reader.hasNext()) {
-                            if (subscriber.isUnsubscribed()) {
-                                subscriber.onCompleted();
-                                return;
-                            }
-                            TYPE t = gson.fromJson(reader, type);
-                            subscriber.onNext(t);
-                        }
-                        reader.endArray();
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        subscriber.onError(e);
-                    } finally {
-                        subscriber.onCompleted();
-                        closeQuietly(reader);
+    @NonNull
+    private static <TYPE> Observable<TYPE> convertObjectsStream(ResponseBody responseBody, Gson gson, Class<TYPE> clazz) {
+        return Observable.create(subscriber -> {
+            JsonReader reader = null;
+            try {
+                // parse json here semi-manually
+                subscriber.onStart();
+                Type type = TypeToken.get(clazz).getType();
+                reader = gson.newJsonReader(responseBody.charStream());
+                reader.beginObject();
+                while (reader.hasNext()) {
+                    if (!reader.nextName().equals("features")) {
+                        reader.skipValue();
+                        continue;
                     }
-                }))
-                .onBackpressureBuffer();
+                    reader.beginArray();
+                    while (reader.hasNext()) {
+                        if (subscriber.isUnsubscribed()) {
+                            subscriber.onCompleted();
+                            return;
+                        }
+                        TYPE t = gson.fromJson(reader, type);
+                        subscriber.onNext(t);
+                    }
+                    reader.endArray();
+                }
+                reader.endObject();
+            } catch (Exception e) {
+                e.printStackTrace();
+                subscriber.onError(e);
+            } finally {
+                subscriber.onCompleted();
+                closeQuietly(reader);
+            }
+        });
     }
 }

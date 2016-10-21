@@ -11,10 +11,9 @@
     android:paddingTop="@dimen/activity_vertical_margin"
     tools:context="com.alsk.onebyone.MainActivity"
     >
-
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Hello World!"
+        android:text="Don't look at this. Check logcat instead."
         />
 </RelativeLayout>
