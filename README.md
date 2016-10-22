@@ -13,7 +13,7 @@ and return to the consumer code parsed objects one by one as fast as they becomi
 # Solution
 
 1. Annotation `@Streaming` for *retrofit's service interface method* is able to switch off the inner caching of retrofit.
-2. RxJava's `Observable<ResponseBody>` as a return type for *retrofit's service interface method* gives a chance 
+2. `Observable<ResponseBody>` as a return type for *retrofit's service interface method* gives a chance 
 to get an access to the HTTP-response body's `InputStream` as fast as the connection established 
 and whole the headers received (but the body still not received).
 3. It is possible to parse received body's `InputStream` with Gson in semi-automatic mode in order to receiving desired JSON objects ony by one.
@@ -35,6 +35,21 @@ It has structure like:
 ...
 ]}
 ```
+
+The retrofit's service interface declared like that:
+```
+public interface HugeJsonApi {
+    @Streaming
+    @GET("/zemirco/sf-city-lots-json/master/citylots.json")
+    Observable<ResponseBody> get();
+}
+```
+
+Then RxJava's operator `flatMap()` is used as a way how to turn `ResponseBody` to stream of parsed JSON objects.
+
+The actual conversation is happens at `MainActivity.convertObjectsStream(...)` method.
+
+The application outputs some information to `logcat` for every parsed JSON object as fast as the object received.
 
 # Improvements
 
