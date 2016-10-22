@@ -37,15 +37,17 @@ public class MainActivity extends AppCompatActivity {
 
         HugeJsonApi hugeJsonApi = RestUtils.createService(HugeJsonApi.class, HugeJsonApi.SERVICE_ENDPOINT);
 
+        final int[] counter = {0};
         Gson gson = new GsonBuilder().create();
-
         Handler handler = new Handler(Looper.getMainLooper());
 
         hugeJsonApi.get()
                 .flatMap(responseBody -> convertObjectsStream(responseBody, gson, Feature.class))
                 .subscribeOn(Schedulers.io())
                 //.observeOn(AndroidSchedulers.mainThread())
-                .subscribe(feature -> handler.post(()->Log.i(TAG, gson.toJson(feature))), e -> Log.e(TAG, "something went wrong", e), () -> Log.i(TAG, "onCompleted() called"));
+                .subscribe(feature -> handler.post(()->{Log.i(TAG, gson.toJson(feature)); counter[0]++;}),
+                           e  -> Log.e(TAG, "something went wrong", e),
+                           () -> handler.post(()-> Log.i(TAG, "onCompleted() called. Fetched elements:" + counter[0])));
     }
 
     @NonNull
@@ -59,6 +61,7 @@ public class MainActivity extends AppCompatActivity {
                 reader = gson.newJsonReader(responseBody.charStream());
                 reader.beginObject();
                 while (reader.hasNext()) {
+                    // the array begins at json-field "features"
                     if (!reader.nextName().equals("features")) {
                         reader.skipValue();
                         continue;
