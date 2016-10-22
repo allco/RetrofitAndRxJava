@@ -44,7 +44,6 @@ public class MainActivity extends AppCompatActivity {
         hugeJsonApi.get()
                 .flatMap(responseBody -> convertObjectsStream(responseBody, gson, Feature.class))
                 .subscribeOn(Schedulers.io())
-                //.observeOn(AndroidSchedulers.mainThread())
                 .subscribe(feature -> handler.post(()->{Log.i(TAG, gson.toJson(feature)); counter[0]++;}),
                            e  -> Log.e(TAG, "something went wrong", e),
                            () -> handler.post(()-> Log.i(TAG, "onCompleted() called. Fetched elements:" + counter[0])));
