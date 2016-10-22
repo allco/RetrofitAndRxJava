@@ -53,4 +53,4 @@ The application outputs some information to `logcat` for every parsed JSON objec
 
 # Improvements
 
-Perhaps, it would be nice to use `observeOn()` operator for `subscribe()`, then in this case some of [Backpressure](https://github.com/ReactiveX/RxJava/wiki/Backpressure) technique should be used. But my tests show me, that the current implementation work much faster and stable. 
+Perhaps, it would be nice to use `observeOn()` operator for `subscribe()`, then in this case some of [Backpressure techniques](https://github.com/ReactiveX/RxJava/wiki/Backpressure) should be used. But my tests show me, that the current implementation work much faster and stable. 
