@@ -1,4 +1,4 @@
-# RxJavaSamples
+# RetrofitAndRxJava
 
 This is the demonstration how to get JSON objects one by one from a JSON array using Retrofit and RxJava.
 
