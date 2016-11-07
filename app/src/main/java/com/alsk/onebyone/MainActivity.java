@@ -68,7 +68,6 @@ public class MainActivity extends AppCompatActivity {
                     reader.beginArray();
                     while (reader.hasNext()) {
                         if (subscriber.isUnsubscribed()) {
-                            subscriber.onCompleted();
                             return;
                         }
                         TYPE t = gson.fromJson(reader, type);
@@ -81,8 +80,8 @@ public class MainActivity extends AppCompatActivity {
                 e.printStackTrace();
                 subscriber.onError(e);
             } finally {
-                subscriber.onCompleted();
                 closeQuietly(reader);
+                subscriber.onCompleted();
             }
         });
     }
