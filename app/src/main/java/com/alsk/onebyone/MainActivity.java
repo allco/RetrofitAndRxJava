@@ -1,12 +1,11 @@
 package com.alsk.onebyone;
 
+import android.databinding.DataBindingUtil;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.support.annotation.NonNull;
 import android.support.v7.app.AppCompatActivity;
-import android.util.Log;
 
+import com.alsk.onebyone.databinding.ActivityMainBinding;
 import com.alsk.onebyone.hugejsonservice.models.Feature;
 import com.alsk.onebyone.hugejsonservice.rest.HugeJsonApi;
 import com.google.gson.Gson;
@@ -14,22 +13,27 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import com.google.gson.stream.JsonReader;
 
+import java.io.IOException;
 import java.lang.reflect.Type;
 
 import okhttp3.ResponseBody;
+import okhttp3.internal.Util;
 import rx.Observable;
+import rx.Subscriber;
+import rx.android.schedulers.AndroidSchedulers;
+import rx.observables.SyncOnSubscribe;
+import rx.plugins.RxJavaHooks;
 import rx.schedulers.Schedulers;
-
-import static okhttp3.internal.Util.closeQuietly;
 
 public class MainActivity extends AppCompatActivity {
 
-    private static final String TAG = MainActivity.class.getName();
+    public static final int TOTAL_ELEMENTS_COUNT = 206560;
+    private ActivityMainBinding binding;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+        binding = DataBindingUtil.setContentView(this, R.layout.activity_main);
         playHugeJsonSample();
     }
 
@@ -39,50 +43,96 @@ public class MainActivity extends AppCompatActivity {
 
         final int[] counter = {0};
         Gson gson = new GsonBuilder().create();
-        Handler handler = new Handler(Looper.getMainLooper());
 
         hugeJsonApi.get()
                 .flatMap(responseBody -> convertObjectsStream(responseBody, gson, Feature.class))
                 .subscribeOn(Schedulers.io())
-                .subscribe(feature -> handler.post(()->{Log.i(TAG, gson.toJson(feature)); counter[0]++;}),
-                           e  -> Log.e(TAG, "something went wrong", e),
-                           () -> handler.post(()-> Log.i(TAG, "onCompleted() called. Fetched elements:" + counter[0])));
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(new Subscriber<Feature>() {
+                    @Override
+                    public void onStart() {
+                        super.onStart();
+
+                        binding.progressbar.setMax(TOTAL_ELEMENTS_COUNT);
+                        binding.progressbar.setIndeterminate(false);
+                        binding.progressbar.setProgress(0);
+                        request(1);
+                    }
+
+                    @Override
+                    public void onNext(Feature feature) {
+                        counter[0]++;
+                        binding.tvCounter.setText("Read elements counter: " + counter[0]);
+                        binding.tvLastElement.setText("Last read element: " + gson.toJson(feature));
+                        binding.tvStatus.setText("Used memory: " + getUsedMemoryInMb() + "Mb");
+                        binding.progressbar.setProgress(counter[0]);
+                        request(1);
+                    }
+
+                    @Override
+                    public void onCompleted() {
+                        binding.tvStatus.setText("Status: successfully completed");
+                    }
+
+                    @Override
+                    public void onError(Throwable e) {
+                        binding.tvStatus.setText("Status: something went wrong " + e.getMessage());
+                    }
+                });
+    }
+
+    private long getUsedMemoryInMb() {
+        final Runtime runtime = Runtime.getRuntime();
+        final long usedMemInMB = (runtime.totalMemory() - runtime.freeMemory()) / 1048576L;
+        //final long maxHeapSizeInMB=runtime.maxMemory() / 1048576L;
+        return usedMemInMB;
     }
 
     @NonNull
     private static <TYPE> Observable<TYPE> convertObjectsStream(ResponseBody responseBody, Gson gson, Class<TYPE> clazz) {
-        return Observable.create(subscriber -> {
-            JsonReader reader = null;
-            try {
-                // parse json here semi-manually
-                subscriber.onStart();
-                Type type = TypeToken.get(clazz).getType();
-                reader = gson.newJsonReader(responseBody.charStream());
-                reader.beginObject();
-                while (reader.hasNext()) {
-                    // the array begins at json-field "features"
-                    if (!reader.nextName().equals("features")) {
-                        reader.skipValue();
-                        continue;
-                    }
-                    reader.beginArray();
-                    while (reader.hasNext()) {
-                        if (subscriber.isUnsubscribed()) {
-                            return;
+        Type type = TypeToken.get(clazz).getType();
+        return Observable.create(SyncOnSubscribe.<JsonReader, TYPE>createStateful(
+                () -> {
+                    try {
+                        JsonReader reader = gson.newJsonReader(responseBody.charStream());
+                        reader.beginObject();
+                        // looking for a "features" field with actual array of elements
+                        while (reader.hasNext()) {
+                            // the array begins at json-field "features"
+                            if (reader.nextName().equals("features")) {
+                                reader.beginArray();
+                                return reader;
+                            }
+                            reader.skipValue();
                         }
-                        TYPE t = gson.fromJson(reader, type);
-                        subscriber.onNext(t);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        RxJavaHooks.onError(e);
                     }
-                    reader.endArray();
+                    return null;
+                },
+                (reader, observer) -> {
+
+                    if (reader == null) {
+                        observer.onCompleted();
+                        return null;
+                    }
+
+                    try {
+                        if (reader.hasNext()) {
+                            TYPE t = gson.fromJson(reader, type);
+                            observer.onNext(t);
+                        } else {
+                            observer.onCompleted();
+                        }
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        observer.onError(e);
+                    }
+
+                    return reader;
                 }
-                reader.endObject();
-            } catch (Exception e) {
-                e.printStackTrace();
-                subscriber.onError(e);
-            } finally {
-                closeQuietly(reader);
-                subscriber.onCompleted();
-            }
-        });
+                , Util::closeQuietly)
+        );
     }
 }

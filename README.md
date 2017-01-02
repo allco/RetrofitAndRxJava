@@ -49,8 +49,5 @@ Then RxJava's operator `flatMap()` is used as a way how to turn `ResponseBody` t
 
 The actual conversation is happens at `MainActivity.convertObjectsStream(...)` method.
 
-The application outputs some information to `logcat` for every parsed JSON object as fast as the object received.
-
 # Improvements
-
-Perhaps, it would be nice to use `observeOn()` operator for `subscribe()`, then in this case some of [Backpressure techniques](https://github.com/ReactiveX/RxJava/wiki/Backpressure) should be used. But my tests show me, that the current implementation work much faster and stable. 
+It would be nice to have an retrofit's CallAdapter.
