@@ -13,17 +13,20 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import com.google.gson.stream.JsonReader;
 
+import org.reactivestreams.Subscriber;
+import org.reactivestreams.Subscription;
+
 import java.io.IOException;
 import java.lang.reflect.Type;
+import java.util.concurrent.Callable;
 
+import io.reactivex.Emitter;
+import io.reactivex.Observable;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.functions.BiFunction;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.schedulers.Schedulers;
 import okhttp3.ResponseBody;
-import okhttp3.internal.Util;
-import rx.Observable;
-import rx.Subscriber;
-import rx.android.schedulers.AndroidSchedulers;
-import rx.observables.SyncOnSubscribe;
-import rx.plugins.RxJavaHooks;
-import rx.schedulers.Schedulers;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -49,9 +52,9 @@ public class MainActivity extends AppCompatActivity {
                 .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(new Subscriber<Feature>() {
+
                     @Override
-                    public void onStart() {
-                        super.onStart();
+                    public void onSubscribe(Subscription s) {
 
                         binding.progressbar.setMax(TOTAL_ELEMENTS_COUNT);
                         binding.progressbar.setIndeterminate(false);
@@ -70,13 +73,13 @@ public class MainActivity extends AppCompatActivity {
                     }
 
                     @Override
-                    public void onCompleted() {
-                        binding.tvStatus.setText("Status: successfully completed");
+                    public void onError(Throwable e) {
+                        binding.tvStatus.setText("Status: something went wrong " + e.getMessage());
                     }
 
                     @Override
-                    public void onError(Throwable e) {
-                        binding.tvStatus.setText("Status: something went wrong " + e.getMessage());
+                    public void onComplete() {
+                        binding.tvStatus.setText("Status: successfully completed");
                     }
                 });
     }
@@ -91,48 +94,55 @@ public class MainActivity extends AppCompatActivity {
     @NonNull
     private static <TYPE> Observable<TYPE> convertObjectsStream(ResponseBody responseBody, Gson gson, Class<TYPE> clazz) {
         Type type = TypeToken.get(clazz).getType();
-        return Observable.create(SyncOnSubscribe.<JsonReader, TYPE>createStateful(
-                () -> {
-                    try {
-                        JsonReader reader = gson.newJsonReader(responseBody.charStream());
-                        reader.beginObject();
-                        // looking for a "features" field with actual array of elements
-                        while (reader.hasNext()) {
-                            // the array begins at json-field "features"
-                            if (reader.nextName().equals("features")) {
-                                reader.beginArray();
-                                return reader;
-                            }
-                            reader.skipValue();
+        return Observable.generate(new Callable<JsonReader>() {
+
+            @Override
+            public JsonReader call() throws Exception {
+                try {
+                    JsonReader reader = gson.newJsonReader(responseBody.charStream());
+                    reader.beginObject();
+                    // looking for a "features" field with actual array of elements
+                    while (reader.hasNext()) {
+                        // the array begins at json-field "features"
+                        if (reader.nextName().equals("features")) {
+                            reader.beginArray();
+                            return reader;
                         }
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                        RxJavaHooks.onError(e);
+                        reader.skipValue();
                     }
-                    return null;
-                },
-                (reader, observer) -> {
-
-                    if (reader == null) {
-                        observer.onCompleted();
-                        return null;
-                    }
-
-                    try {
-                        if (reader.hasNext()) {
-                            TYPE t = gson.fromJson(reader, type);
-                            observer.onNext(t);
-                        } else {
-                            observer.onCompleted();
-                        }
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                        observer.onError(e);
-                    }
-
-                    return reader;
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    RxJavaPlugins.onError(e);
                 }
-                , Util::closeQuietly)
+                return null;
+            }
+        }, new BiFunction<JsonReader, Emitter<TYPE>, JsonReader>() {
+
+            @Override
+            public JsonReader apply(@NonNull JsonReader jsonReader, @NonNull Emitter<TYPE> typeEmitter) throws Exception {
+                        if (jsonReader == null) {
+                            typeEmitter.onComplete();
+                            return null;
+                        }
+
+                        try {
+                            if (jsonReader.hasNext()) {
+                                TYPE t = gson.fromJson(jsonReader, clazz);
+                                typeEmitter.onNext(t);
+                            } else {
+                                typeEmitter.onComplete();
+                            }
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                            typeEmitter.onError(e);
+                        }
+                        return jsonReader;
+
+                    }
+            }
+
         );
+
+
     }
 }
