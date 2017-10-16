@@ -10,19 +10,13 @@ import com.alsk.onebyone.hugejsonservice.models.Feature;
 import com.alsk.onebyone.hugejsonservice.rest.HugeJsonApi;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.reflect.TypeToken;
 import com.google.gson.stream.JsonReader;
 
-
 import java.io.IOException;
-import java.lang.reflect.Type;
-import java.util.concurrent.Callable;
 
-import io.reactivex.Emitter;
 import io.reactivex.Observable;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
-import io.reactivex.functions.BiFunction;
 import io.reactivex.functions.Function;
 import io.reactivex.observers.DisposableObserver;
 import io.reactivex.plugins.RxJavaPlugins;
@@ -101,53 +95,44 @@ public class MainActivity extends AppCompatActivity {
 
     @NonNull
     private static <TYPE> Observable<TYPE> convertObjectsStream(final Response<ResponseBody> response, Gson gson, Class<TYPE> clazz) {
-        Type type = TypeToken.get(clazz).getType();
-        return Observable.generate(new Callable<JsonReader>() {
-
-            @Override
-            public JsonReader call() throws Exception {
-                try {
-                    JsonReader reader = gson.newJsonReader(response.body().charStream());
-                    reader.beginObject();
-                    // looking for a "features" field with actual array of elements
-                    while (reader.hasNext()) {
-                        // the array begins at json-field "features"
-                        if (reader.nextName().equals("features")) {
-                            reader.beginArray();
-                            return reader;
-                        }
-                        reader.skipValue();
+        return Observable.generate(() -> {
+            try {
+                JsonReader reader = gson.newJsonReader(response.body().charStream());
+                reader.beginObject();
+                // looking for a "features" field with actual array of elements
+                while (reader.hasNext()) {
+                    // the array begins at json-field "features"
+                    if (reader.nextName().equals("features")) {
+                        reader.beginArray();
+                        return reader;
                     }
-                } catch (IOException e) {
-                    e.printStackTrace();
-                    RxJavaPlugins.onError(e);
+                    reader.skipValue();
                 }
-                return null;
+            } catch (IOException e) {
+                e.printStackTrace();
+                RxJavaPlugins.onError(e);
             }
-        }, new BiFunction<JsonReader, Emitter<TYPE>, JsonReader>() {
-
-            @Override
-            public JsonReader apply(@NonNull JsonReader jsonReader, @NonNull Emitter<TYPE> typeEmitter) throws Exception {
-                        if (jsonReader == null) {
-                            typeEmitter.onComplete();
-                            return null;
-                        }
-
-                        try {
-                            if (jsonReader.hasNext()) {
-                                TYPE t = gson.fromJson(jsonReader, clazz);
-                                typeEmitter.onNext(t);
-                            } else {
-                                typeEmitter.onComplete();
-                            }
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                            typeEmitter.onError(e);
-                        }
-                        return jsonReader;
-
+            return null;
+        }, (jsonReader, typeEmitter) -> {
+                    if (jsonReader == null) {
+                        typeEmitter.onComplete();
+                        return null;
                     }
-            }
+
+                    try {
+                        if (jsonReader.hasNext()) {
+                            TYPE t = gson.fromJson(jsonReader, clazz);
+                            typeEmitter.onNext(t);
+                        } else {
+                            typeEmitter.onComplete();
+                        }
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        typeEmitter.onError(e);
+                    }
+                    return jsonReader;
+
+                }
 
         );
 
