@@ -17,7 +17,6 @@ import java.io.IOException;
 import io.reactivex.Observable;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
-import io.reactivex.functions.Function;
 import io.reactivex.observers.DisposableObserver;
 import io.reactivex.plugins.RxJavaPlugins;
 import io.reactivex.schedulers.Schedulers;
@@ -55,12 +54,7 @@ public class MainActivity extends AppCompatActivity {
         binding.progressbar.setIndeterminate(false);
         binding.progressbar.setProgress(0);
         compositeDisposable.add(responseObservable
-                .flatMap(new Function<Response<ResponseBody>, Observable<Feature>>(){
-                    @Override
-                    public Observable<Feature> apply(@io.reactivex.annotations.NonNull Response<ResponseBody> response) throws Exception {
-                        return convertObjectsStream(response, gson, Feature.class);
-                    }
-                })
+                .flatMap(response -> convertObjectsStream(response, gson, Feature.class))
                 .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribeWith(new DisposableObserver<Feature>() {
