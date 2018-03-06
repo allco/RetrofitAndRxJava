@@ -45,9 +45,11 @@ public interface HugeJsonApi {
 }
 ```
 
-Then RxJava's operator `flatMap()` is used as a way how to turn `ResponseBody` to stream of parsed JSON objects.
+Then RxJava's operator `concatMap()` turns `ResponseBody` to a stream of parsed JSON objects.
 
 The actual conversation is happens at `MainActivity.convertObjectsStream(...)` method.
+
+The one can ensure with any network sniffer (like Charles Proxy) that actual parsing is happening on the fly.
 
 # Improvements
 It would be nice to have an retrofit's CallAdapter.

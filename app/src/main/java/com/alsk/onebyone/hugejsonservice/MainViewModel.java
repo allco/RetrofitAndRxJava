@@ -50,7 +50,7 @@ public class MainViewModel extends AndroidViewModel {
         subscriptions.clear();
         initializationInProgress.set(true);
         subscriptions.add(hugeJsonApi.get()
-                .flatMap(response -> convertObjectsStream(response, gson, Feature.class))
+                .concatMap(response -> convertObjectsStream(response, gson, Feature.class))
                 .subscribeOn(Schedulers.io())
                 .doOnSubscribe(s -> initializationInProgress.set(true))
                 .subscribeWith(new DisposableSubscriber<Feature>() {
