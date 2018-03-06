@@ -1,6 +1,6 @@
 package com.alsk.onebyone.hugejsonservice.rest;
 
-import io.reactivex.Observable;
+import io.reactivex.Flowable;
 import okhttp3.ResponseBody;
 import retrofit2.Response;
 import retrofit2.http.GET;
@@ -13,5 +13,5 @@ public interface HugeJsonApi {
 
     @Streaming
     @GET("/zemirco/sf-city-lots-json/master/citylots.json")
-    Observable<Response<ResponseBody>> get();
+    Flowable<Response<ResponseBody>> get();
 }
