@@ -14,13 +14,14 @@ import com.google.gson.stream.JsonReader;
 
 import java.io.IOException;
 
-import io.reactivex.Observable;
+import io.reactivex.Flowable;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
-import io.reactivex.observers.DisposableObserver;
 import io.reactivex.plugins.RxJavaPlugins;
 import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subscribers.DisposableSubscriber;
 import okhttp3.ResponseBody;
+import okhttp3.internal.Util;
 import retrofit2.Response;
 
 public class MainActivity extends AppCompatActivity {
@@ -28,8 +29,6 @@ public class MainActivity extends AppCompatActivity {
     public static final int TOTAL_ELEMENTS_COUNT = 206560;
     private ActivityMainBinding binding;
     private CompositeDisposable compositeDisposable = new CompositeDisposable();
-
-    private Observable<Response<ResponseBody>> responseObservable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -47,18 +46,20 @@ public class MainActivity extends AppCompatActivity {
     public void playHugeJsonSample() {
 
         HugeJsonApi hugeJsonApi = RestUtils.createService(HugeJsonApi.class, HugeJsonApi.SERVICE_ENDPOINT);
-        responseObservable = hugeJsonApi.get();
         final int[] counter = {0};
         final Gson gson = new GsonBuilder().create();
         binding.progressbar.setMax(TOTAL_ELEMENTS_COUNT);
         binding.progressbar.setIndeterminate(false);
         binding.progressbar.setProgress(0);
-        compositeDisposable.add(responseObservable
+        compositeDisposable.add(hugeJsonApi.get()
                 .flatMap(response -> convertObjectsStream(response, gson, Feature.class))
                 .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
-                .subscribeWith(new DisposableObserver<Feature>() {
-
+                .subscribeWith(new DisposableSubscriber<Feature>() {
+                    @Override
+                    protected void onStart() {
+                        request(1);
+                    }
                     @Override
                     public void onNext(Feature feature) {
                         counter[0]++;
@@ -66,6 +67,7 @@ public class MainActivity extends AppCompatActivity {
                         binding.tvLastElement.setText("Last read element: " + gson.toJson(feature));
                         binding.tvStatus.setText("Used memory: " + getUsedMemoryInMb() + "Mb");
                         binding.progressbar.setProgress(counter[0]);
+                        request(1);
                     }
 
                     @Override
@@ -88,26 +90,26 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @NonNull
-    private static <TYPE> Observable<TYPE> convertObjectsStream(final Response<ResponseBody> response, Gson gson, Class<TYPE> clazz) {
-        return Observable.generate(() -> {
-            try {
-                JsonReader reader = gson.newJsonReader(response.body().charStream());
-                reader.beginObject();
-                // looking for a "features" field with actual array of elements
-                while (reader.hasNext()) {
-                    // the array begins at json-field "features"
-                    if (reader.nextName().equals("features")) {
-                        reader.beginArray();
-                        return reader;
+    private static <TYPE> Flowable<TYPE> convertObjectsStream(final Response<ResponseBody> response, Gson gson, Class<TYPE> clazz) {
+        return Flowable.generate(() -> {
+                    try {
+                        JsonReader reader = gson.newJsonReader(response.body().charStream());
+                        reader.beginObject();
+                        // looking for a "features" field with actual array of elements
+                        while (reader.hasNext()) {
+                            // the array begins at json-field "features"
+                            if (reader.nextName().equals("features")) {
+                                reader.beginArray();
+                                return reader;
+                            }
+                            reader.skipValue();
+                        }
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        RxJavaPlugins.onError(e);
                     }
-                    reader.skipValue();
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-                RxJavaPlugins.onError(e);
-            }
-            return null;
-        }, (jsonReader, typeEmitter) -> {
+                    return null;
+                }, (jsonReader, typeEmitter) -> {
                     if (jsonReader == null) {
                         typeEmitter.onComplete();
                         return null;
@@ -126,9 +128,8 @@ public class MainActivity extends AppCompatActivity {
                     }
                     return jsonReader;
 
-                }
-
-        );
+                },
+                Util::closeQuietly);
 
 
     }
